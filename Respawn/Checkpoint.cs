@@ -12,7 +12,8 @@ namespace Respawn
 
     public class Checkpoint
     {
-        private string[] _tablesToDelete;
+		private string[] _tablesToDelete;
+		private Constraint[] _foreignKeysToDisable;
         private string _deleteSql;
 
         public string[] TablesToIgnore { get; set; } = new string[0];
@@ -22,10 +23,11 @@ namespace Respawn
 
         public int? CommandTimeout { get; set; }
 
-        private class Relationship
-        {
+		private class Relationship
+		{
             public string PrimaryKeyTable { get; set; }
             public string ForeignKeyTable { get; set; }
+			public Constraint Constraint { get; set; }
 
             public bool IsSelfReferencing => PrimaryKeyTable == ForeignKeyTable;
 
@@ -74,18 +76,26 @@ namespace Respawn
 
             var allRelationships = await GetRelationships(connection);
 
-            _tablesToDelete = BuildTableList(allTables, allRelationships);
+			var dbObjects = BuildObjectsList(allTables, allRelationships);
 
-            _deleteSql = DbAdapter.BuildDeleteCommandText(_tablesToDelete);
+			_tablesToDelete = dbObjects.tablesToDelete;
+			_foreignKeysToDisable = dbObjects.foreignKeysToDisable;
+
+			_deleteSql = DbAdapter.BuildDeleteCommandText(_tablesToDelete, _foreignKeysToDisable);
         }
 
-        private static string[] BuildTableList(ICollection<string> allTables, IList<Relationship> allRelationships,
-            List<string> tablesToDelete = null)
+        private static (string[] tablesToDelete, Constraint[] foreignKeysToDisable) BuildObjectsList(ICollection<string> allTables, IList<Relationship> allRelationships,
+            List<string> tablesToDelete = null, List<Constraint> foreignKeysToDisable = null)
         {
             if (tablesToDelete == null)
             {
                 tablesToDelete = new List<string>();
             }
+
+			if (foreignKeysToDisable == null)
+			{
+				foreignKeysToDisable = new List<Constraint>();
+			}
 
             var referencedTables = allRelationships
                 .Where(rel => !rel.IsSelfReferencing)
@@ -97,12 +107,17 @@ namespace Respawn
 
             if (referencedTables.Count > 0 && leafTables.Count == 0)
             {
-                string message = string.Join(",", referencedTables);
-                message = string.Join(Environment.NewLine, $@"There is a dependency involving the DB tables ({message}) and we can't safely build the list of tables to delete.",
-                    "Check for circular references.",
-                    "If you have TablesToIgnore you also need to ignore the tables to which these have primary key relationships.");
-                throw new InvalidOperationException(message);
-            }
+				//string message = string.Join(",", referencedTables);
+				//message = string.Join(Environment.NewLine, $@"There is a dependency involving the DB tables ({message}) and we can't safely build the list of tables to delete.",
+				//    "Check for circular references.",
+				//    "If you have TablesToIgnore you also need to ignore the tables to which these have primary key relationships.");
+				//throw new InvalidOperationException(message);
+
+				foreignKeysToDisable.AddRange(allRelationships.Select(r => r.Constraint).Distinct());
+				leafTables = allTables.ToList();
+
+				referencedTables = new List<string>(0);
+			}
 
             tablesToDelete.AddRange(leafTables);
 
@@ -110,10 +125,10 @@ namespace Respawn
             {
                 var relationships = allRelationships.Where(x => !leafTables.Contains(x.ForeignKeyTable)).ToArray();
                 var tables = allTables.Except(leafTables).ToArray();
-                BuildTableList(tables, relationships, tablesToDelete);
+                BuildObjectsList(tables, relationships, tablesToDelete, foreignKeysToDisable);
             }
 
-            return tablesToDelete.ToArray();
+			return (tablesToDelete.ToArray(), foreignKeysToDisable.ToArray());
         }
 
         private async Task<IList<Relationship>> GetRelationships(DbConnection connection)
@@ -130,9 +145,15 @@ namespace Respawn
                     {
                         var rel = new Relationship
                         {
-                            PrimaryKeyTable = "\"" + reader.GetString(0) + "\".\"" + reader.GetString(1) + "\"",
-                            ForeignKeyTable = "\"" + reader.GetString(2) + "\".\"" + reader.GetString(3) + "\""
-                        };
+                            PrimaryKeyTable = $"\"{reader.GetString(0)}\".\"{reader.GetString(1)}\"",
+                            ForeignKeyTable = $"\"{reader.GetString(2)}\".\"{reader.GetString(3)}\"",
+							Constraint = new Constraint
+							{
+								ForeignKey = reader.GetString(4),
+								ForeignKeyTable = $"\"{reader.GetString(2)}\".\"{reader.GetString(3)}\""
+							}
+						};
+
                         rels.Add(rel);
                     }
                 }

@@ -8,7 +8,7 @@
     {
         string BuildTableCommandText(Checkpoint checkpoint);
         string BuildRelationshipCommandText(Checkpoint checkpoint);
-        string BuildDeleteCommandText(IEnumerable<string> tablesToDelete);
+        string BuildDeleteCommandText(IEnumerable<string> tablesToDelete, IEnumerable<Constraint> foreignKeysToDisable = null);
     }
 
     public static class DbAdapter
@@ -53,14 +53,16 @@ WHERE s.principal_id = '1'";
             {
                 string commandText = @"
 select
-   pk_schema.name, so_pk.name,
-   fk_schema.name, so_fk.name
+	pk_schema.name, so_pk.name,
+	fk_schema.name, so_fk.name,
+	sfk_name.name
 from
 sysforeignkeys sfk
 	inner join sys.objects so_pk on sfk.rkeyid = so_pk.object_id
 	inner join sys.schemas pk_schema on so_pk.schema_id = pk_schema.schema_id
 	inner join sys.objects so_fk on sfk.fkeyid = so_fk.object_id			
 	inner join sys.schemas fk_schema on so_fk.schema_id = fk_schema.schema_id
+	inner join sys.foreign_keys sfk_name on sfk.constid = sfk_name.object_id
 where 1=1";
 
                 if (checkpoint.TablesToIgnore != null && checkpoint.TablesToIgnore.Any())
@@ -85,15 +87,26 @@ where 1=1";
                 return commandText;
             }
 
-            public string BuildDeleteCommandText(IEnumerable<string> tablesToDelete)
+            public string BuildDeleteCommandText(IEnumerable<string> tablesToDelete, IEnumerable<Constraint> foreignKeysToDisable = null)
             {
                 var builder = new StringBuilder();
 
-                foreach (var tableName in tablesToDelete)
+				foreach (var constraint in foreignKeysToDisable)
+				{
+					builder.Append($"alter table {constraint.ForeignKeyTable} nocheck constraint {constraint.ForeignKey};\r\n");
+				}
+
+				foreach (var tableName in tablesToDelete)
                 {
                     builder.Append($"delete from {tableName};\r\n");
                 }
-                return builder.ToString();
+
+				foreach (var constraint in foreignKeysToDisable)
+				{
+					builder.Append($"alter table {constraint.ForeignKeyTable} with check check constraint {constraint.ForeignKey};\r\n");
+				}
+
+				return builder.ToString();
             }
         }
 
@@ -160,7 +173,7 @@ where 1=1";
                 return commandText;
             }
 
-            public string BuildDeleteCommandText(IEnumerable<string> tablesToDelete)
+            public string BuildDeleteCommandText(IEnumerable<string> tablesToDelete, IEnumerable<Constraint> foreignKeysToDisable = null)
             {
                 var builder = new StringBuilder();
 
@@ -214,14 +227,25 @@ where 1=1";
                 return commandText;
             }
 
-            public string BuildDeleteCommandText(IEnumerable<string> tablesToDelete)
+            public string BuildDeleteCommandText(IEnumerable<string> tablesToDelete, IEnumerable<Constraint> foreignKeysToDisable = null)
             {
                 var builder = new StringBuilder();
 
-                foreach (var tableName in tablesToDelete)
-                {
-                    builder.Append($"delete from {tableName};\r\n");
-                }
+				foreach (var constraint in foreignKeysToDisable)
+				{
+					builder.Append($"alter table {constraint.ForeignKeyTable} nockeck constraint {constraint.ForeignKey};\r\n");
+				}
+
+				foreach (var tableName in tablesToDelete)
+				{
+					builder.Append($"delete from {tableName};\r\n");
+				}
+
+				foreach (var constraint in foreignKeysToDisable)
+				{
+					builder.Append($"alter table {constraint.ForeignKeyTable} with check check constraint {constraint.ForeignKey};\r\n");
+				}
+
                 return builder.ToString();
             }
         }

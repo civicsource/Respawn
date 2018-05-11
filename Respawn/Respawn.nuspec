@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package >
+  <metadata>
+    <id>Archon.Testing.Respawn</id>
+    <version>$version$</version>
+    <title>Intelligent checkpoints for database tests</title>
+    <authors>Jimmy Bogard; Djihbrihou Abibou</authors>
+    <owners>Archon Information Systems, LLC.</owners>
+    <licenseUrl>https://github.com/jbogard/Respawn/blob/master/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/jbogard/Respawn</projectUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>CivicSource fork of intelligent checkpoints for database tests by Jimmy Bogard</description>
+    <releaseNotes>Added workaround for circular dependency issue.</releaseNotes>
+  </metadata>
+</package>
